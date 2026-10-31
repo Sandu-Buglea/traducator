@@ -75,7 +75,7 @@ kbd{font:inherit;font-weight:600;border:1px solid var(--line);border-bottom-widt
         <option value="bg-BG|bg">Bulgară</option>
       </select>
     </label>
-    <button id="btnSwap" type="button" title="Inversează limbile (tasta Space)" aria-label="Inversează limbile (tasta Space)">⇄</button>
+    <button id="btnSwap" type="button" title="Inversează limbile (tasta Home)" aria-label="Inversează limbile (tasta Home)">⇄</button>
     <label>Traduce în
       <select id="tgtLang">
         <option value="bg-BG|bg">Bulgară</option>
@@ -92,7 +92,7 @@ kbd{font:inherit;font-weight:600;border:1px solid var(--line);border-bottom-widt
     <button id="btnFull" type="button">Ecran complet</button>
   </section>
   <div id="status" class="status">Gata. Alege limbile, apasă „Pornește microfonul” și vorbește în fraze scurte.</div>
-  <div class="foot">Apasă <kbd>Space</kbd> oricând ca să inversezi limbile (funcționează cât timp fereastra aplicației e activă).</div>
+  <div class="foot">Apasă <kbd>Home</kbd> oricând ca să inversezi limbile.</div>
 
   <section id="stage" class="stage" aria-live="polite">
     <div id="dir" class="dir"></div>
@@ -261,14 +261,12 @@ function swapLangs(){
   status('Acum: ' + NAMES[src().code] + ' → ' + NAMES[tgt().code] + '.');
 }
 $('btnSwap').onclick = swapLangs;
-// tasta Space inversează limbile (nu și când scrii în câmpul de text)
-function typing(el){ return el && el.matches && el.matches('input[type=text],textarea,select'); }
+// tasta Home inversează limbile, oriunde ar fi cursorul în pagină
 document.addEventListener('keydown', e=>{
-  if (e.code !== 'Space' || typing(e.target)) return;
+  if (e.key !== 'Home') return;
   e.preventDefault();
   if (!e.repeat) swapLangs();
-});
-document.addEventListener('keyup', e=>{ if (e.code === 'Space' && !typing(e.target)) e.preventDefault(); });
+}, true);
 $('btnTest').onclick = ()=>{ speechSynthesis.cancel(); speak(TEST[tgt().code]); };
 $('btnSend').onclick = ()=>{ process($('manual').value); $('manual').value=''; };
 $('manual').addEventListener('keydown', e=>{ if (e.key==='Enter') $('btnSend').click(); });
