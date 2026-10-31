@@ -31,6 +31,7 @@ button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #btnMic{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);padding:12px 22px;font-size:16px}
 #btnMic.on{background:var(--live);border-color:var(--live);color:#fff}
+#btnSwap{font-size:18px;padding:6px 12px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:currentColor;margin-right:8px;vertical-align:middle}
 #btnMic.on .dot{animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.25}}
@@ -56,22 +57,31 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 <body>
 <div class="wrap">
   <header>
-    <h1>Traducător Live → Bulgară</h1>
-    <span class="sub">Vorbești, aplicația traduce și citește cu voce tare în bulgară</span>
+    <h1>Traducător Live</h1>
+    <span class="sub">Vorbești, aplicația traduce și citește cu voce tare</span>
   </header>
 
   <div id="warnBox" class="warn" hidden></div>
 
   <section class="panel controls">
     <button id="btnMic" type="button"><span class="dot"></span><span id="micLabel">Pornește microfonul</span></button>
-    <label>Limba ta
+    <label>Limba vorbită
       <select id="srcLang">
         <option value="en-US|en">Engleză (SUA)</option>
         <option value="en-GB|en">Engleză (UK)</option>
         <option value="ro-RO|ro">Română</option>
+        <option value="bg-BG|bg">Bulgară</option>
       </select>
     </label>
-    <label>Voce bulgară
+    <button id="btnSwap" type="button" title="Inversează limbile" aria-label="Inversează limbile">⇄</button>
+    <label>Traduce în
+      <select id="tgtLang">
+        <option value="bg-BG|bg">Bulgară</option>
+        <option value="ro-RO|ro">Română</option>
+        <option value="en-US|en">Engleză</option>
+      </select>
+    </label>
+    <label>Voce
       <select id="voice"></select>
     </label>
     <label>Viteză <input id="rate" type="range" min="0.6" max="1.4" step="0.05" value="0.95"></label>
@@ -79,17 +89,17 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
     <button id="btnTest" type="button">Test voce</button>
     <button id="btnFull" type="button">Ecran complet</button>
   </section>
-  <div id="status" class="status">Gata. Apasă „Pornește microfonul” și vorbește în fraze scurte.</div>
+  <div id="status" class="status">Gata. Alege limbile, apasă „Pornește microfonul” și vorbește în fraze scurte.</div>
 
   <section id="stage" class="stage" aria-live="polite">
     <div id="srcText" class="src"></div>
-    <div id="bgText" class="bg">Здравейте! Добре дошли.</div>
+    <div id="bgText" class="bg">Здравейте! Bun venit!</div>
   </section>
 
   <section class="panel">
     <label for="manual" style="margin-bottom:6px">Sau scrie textul</label>
     <div class="row">
-      <input id="manual" type="text" placeholder="Ex: Good morning everyone, welcome to our training.">
+      <input id="manual" type="text" placeholder="Scrie o frază în limba vorbită și apasă Enter">
       <button id="btnSend" type="button">Traduce și citește</button>
     </div>
   </section>
@@ -109,45 +119,52 @@ const $ = id => document.getElementById(id);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, speaking = false, voices = [];
 let queue = Promise.resolve();
+const NAMES = {bg:'bulgară', ro:'română', en:'engleză'};
+const TEST = {bg:'Здравейте! Добре дошли на нашето обучение.', ro:'Bună ziua! Bine ați venit la instruirea noastră.', en:'Hello! Welcome to our training.'};
+const EDGE_VOICES = {bg:'Kalina și Borislav', ro:'Alina și Emil', en:'Aria și Guy'};
 
 function status(t){ $('status').textContent = t; }
 function warn(t){ const w=$('warnBox'); w.textContent=t; w.hidden=!t; }
-function src(){ const [locale, code] = $('srcLang').value.split('|'); return {locale, code}; }
+function pick(id){ const [locale, code] = $(id).value.split('|'); return {locale, code}; }
+function src(){ return pick('srcLang'); }
+function tgt(){ return pick('tgtLang'); }
 
 /* ---------- Voci ---------- */
 function loadVoices(){
   voices = speechSynthesis.getVoices();
-  const bg = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('bg'));
-  const list = bg.length ? bg : voices;
+  const code = tgt().code;
+  const match = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(code));
+  const list = match.length ? match : voices;
   const sel = $('voice'), prev = sel.value;
   sel.innerHTML = '';
   list.forEach(v => { const o=document.createElement('option'); o.value=v.name; o.textContent=v.name+' ('+v.lang+')'; sel.appendChild(o); });
   // preferă vocile "Natural"/"Online" (Edge), apoi Google
-  const best = bg.find(v=>/natural|online/i.test(v.name)) || bg.find(v=>/google/i.test(v.name)) || bg[0];
-  if (prev && list.some(v=>v.name===prev)) sel.value = prev; else if (best) sel.value = best.name;
-  if (voices.length && !bg.length) warn('Nu am găsit o voce bulgară pe acest calculator. Deschide pagina în Microsoft Edge (are voci bulgare Kalina și Borislav) sau instalează limba bulgară în Windows: Setări → Oră și limbă → Vorbire.');
-  else if (bg.length) warn('');
+  const best = match.find(v=>/natural|online/i.test(v.name)) || match.find(v=>/google/i.test(v.name)) || match[0];
+  if (prev && match.some(v=>v.name===prev)) sel.value = prev; else if (best) sel.value = best.name;
+  if (voices.length && !match.length) warn('Nu am găsit o voce în ' + NAMES[code] + ' pe acest calculator. Deschide pagina în Microsoft Edge (are voci naturale ' + EDGE_VOICES[code] + ') sau instalează limba în Windows: Setări → Oră și limbă → Vorbire.');
+  else if (match.length) warn('');
 }
 speechSynthesis.onvoiceschanged = loadVoices; loadVoices();
 
 /* ---------- Traducere ---------- */
 async function translate(text){
-  const from = src().code;
+  const from = src().code, to = tgt().code;
+  if (from === to) return text;
   try{
-    const r = await fetch('https://api.mymemory.translated.net/get?langpair='+from+'|bg&de='+encodeURIComponent('sandu.buglea@gmail.com')+'&q='+encodeURIComponent(text));
+    const r = await fetch('https://api.mymemory.translated.net/get?langpair='+from+'|'+to+'&de='+encodeURIComponent('sandu.buglea@gmail.com')+'&q='+encodeURIComponent(text));
     const j = await r.json();
     const t = j && j.responseData && j.responseData.translatedText;
     if (j.responseStatus == 200 && t && !/MYMEMORY WARNING|QUERY LENGTH/i.test(t)) return t;
     throw new Error('mymemory');
   }catch(e){
-    const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl='+from+'&tl=bg&q='+encodeURIComponent(text));
+    const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl='+from+'&tl='+to+'&q='+encodeURIComponent(text));
     const j = await r.json();
     return j[0].map(p=>p[0]).join('');
   }
 }
 
 /* ---------- Vorbire ---------- */
-function speak(text){
+function speak(text, locale){
   return new Promise(resolve=>{
     // fraze scurte: Chrome taie uneori textele lungi
     const parts = text.match(/[^.!?;]+[.!?;]*/g) || [text];
@@ -157,7 +174,7 @@ function speak(text){
     let left = parts.length;
     parts.forEach(p=>{
       const u = new SpeechSynthesisUtterance(p.trim());
-      u.lang = 'bg-BG'; if (v) u.voice = v; u.rate = parseFloat($('rate').value);
+      u.lang = locale || tgt().locale; if (v) u.voice = v; u.rate = parseFloat($('rate').value);
       u.onend = u.onerror = () => { if (--left === 0) { speaking=false; resumeMic(); resolve(); } };
       speechSynthesis.speak(u);
     });
@@ -168,24 +185,25 @@ function process(text){
   text = text.trim(); if (!text) return;
   queue = queue.then(async ()=>{
     status('Traduc…');
-    let bg;
-    try{ bg = await translate(text); }
+    let out;
+    const t = tgt();
+    try{ out = await translate(text); }
     catch(e){ status('Nu am putut traduce. Verifică conexiunea la internet.'); return; }
-    $('srcText').textContent = text; $('bgText').textContent = bg;
-    addLog(text, bg);
-    status('Citesc în bulgară…');
-    await speak(bg);
+    $('srcText').textContent = text; $('bgText').textContent = out;
+    addLog(text, out, t.locale);
+    status('Citesc în ' + NAMES[t.code] + '…');
+    await speak(out, t.locale);
     status(listening ? 'Ascult…' : 'Gata.');
   });
 }
 
-function addLog(e, b){
+function addLog(e, b, locale){
   const log = $('log'); if (log.querySelector('.foot')) log.innerHTML='';
   const d = document.createElement('div'); d.className='item';
   const pe = document.createElement('div'); pe.className='e'; pe.textContent=e;
   const pb = document.createElement('div'); pb.textContent=b;
   const btn = document.createElement('button'); btn.type='button'; btn.textContent='Redă din nou';
-  btn.onclick = ()=>{ speechSynthesis.cancel(); speak(b); };
+  btn.onclick = ()=>{ speechSynthesis.cancel(); speak(b, locale); };
   d.append(pe,pb,btn); log.prepend(d);
 }
 
@@ -220,10 +238,21 @@ function stopMic(){
   if (rec) { try{ rec.abort(); }catch(e){} rec=null; }
   status('Microfon oprit.');
 }
+function restartIfListening(){ if (listening){ stopMic(); startMic(); } }
 
 $('btnMic').onclick = ()=> listening ? stopMic() : startMic();
-$('srcLang').onchange = ()=>{ if (listening){ stopMic(); startMic(); } };
-$('btnTest').onclick = ()=>{ speechSynthesis.cancel(); speak('Здравейте! Добре дошли на нашето обучение.'); };
+$('srcLang').onchange = restartIfListening;
+$('tgtLang').onchange = loadVoices;
+$('btnSwap').onclick = ()=>{
+  const s = src().code, t = tgt().code;
+  const srcOpt = [...$('srcLang').options].find(o=>o.value.endsWith('|'+t));
+  const tgtOpt = [...$('tgtLang').options].find(o=>o.value.endsWith('|'+s));
+  if (srcOpt) $('srcLang').value = srcOpt.value;
+  if (tgtOpt) $('tgtLang').value = tgtOpt.value;
+  loadVoices(); restartIfListening();
+  status('Acum: ' + NAMES[src().code] + ' → ' + NAMES[tgt().code] + '.');
+};
+$('btnTest').onclick = ()=>{ speechSynthesis.cancel(); speak(TEST[tgt().code]); };
 $('btnSend').onclick = ()=>{ process($('manual').value); $('manual').value=''; };
 $('manual').addEventListener('keydown', e=>{ if (e.key==='Enter') $('btnSend').click(); });
 $('btnClear').onclick = ()=>{ $('log').innerHTML='<div class="foot">Frazele traduse apar aici. Poți reda oricare din nou.</div>'; };
